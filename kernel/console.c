@@ -77,6 +77,7 @@ cgaputc(int c)
 	int pos;
 
 	// Cursor position: col + 80*row.
+
 	outb(CRTPORT, 14);
 	pos = inb(CRTPORT+1) << 8;
 	outb(CRTPORT, 15);
@@ -130,10 +131,205 @@ struct {
 } input;
 
 #define C(x)  ((x)-'@')  // Control-x
+#define A(x)  ((x)+'@')
+
+static void
+setcursor(int pos) {
+	outb(CRTPORT, 14);
+	outb(CRTPORT+1, pos>>8);
+	outb(CRTPORT, 15);
+	outb(CRTPORT+1, pos);
+}
+
+static int
+getcursor(){
+	int pos;
+	outb(CRTPORT, 14);
+	pos = inb(CRTPORT+1) << 8;
+	outb(CRTPORT, 15);
+	pos |= inb(CRTPORT+1);
+	return pos;
+}
+
+//FIND MODE
+#define SEARCH_MAX 70
+struct {
+	char buf[SEARCH_MAX];
+	int len;
+	int marked;
+	int totalfound;
+} searchinfo;
+
+static int
+cmp_non_case_sens(char a, char b){
+	return (a == b ? 1 : a + 32 == b ? 1 : a - 32 == b ? 1 : 0);
+}
+
+static void
+mark_range_color(int l, int r, int color){
+	for(int i = l; i <= r; i++){
+		int ch = crt[i] & 0x00ff;
+		crt[i] = ch | color;
+	}
+}
+
+static void
+mark_range(int l, int r){
+	mark_range_color(l, r, 0x5000);
+}
+
+static void
+markalloccur(){
+	int mx = 24 * 80;
+	for(int i = 0; i < mx; i++){
+		int rightPart = crt[i] & 0x00ff;
+		crt[i] = rightPart | 0x7000;
+	}
+	if(searchinfo.len == 0) return;
+	int p1 = 0, found = 0;
+	for(int i = 0; i < mx; i++){
+		char ch = crt[i] & 0x00ff;
+		if(cmp_non_case_sens(searchinfo.buf[p1], ch)){
+			p1++;
+			if(p1 == searchinfo.len){
+				mark_range(i - searchinfo.len + 1, i);
+				p1 = 0;
+				found++;
+			}
+		}
+		else{
+			p1 = 0;
+		}
+	}
+	searchinfo.totalfound = found;
+}
+
+static int
+marknthoccur(int n){
+	if(searchinfo.len == 0) return 0;
+	markalloccur();
+	int mx = 24 * 80;
+	int p1 = 0, found = 0;
+	for(int i = 0; i < mx; i++){
+		char ch = crt[i] & 0x00ff;
+		if(cmp_non_case_sens(searchinfo.buf[p1], ch)){
+			p1++;
+			if(p1 == searchinfo.len){
+				p1 = 0;
+				found++;
+				if (found == n){
+					mark_range_color(i - searchinfo.len + 1, i, 0x2000);
+					searchinfo.marked = n;
+					return 1;
+				}
+			}
+		}
+		else{
+			p1 = 0;
+		}
+	}
+	return 0;
+}
+
+static void
+mark_prev(){
+	int ans = marknthoccur(searchinfo.marked - 1);
+	if (ans == 0) marknthoccur(searchinfo.totalfound);
+}
+
+static void
+mark_next(){
+	int ans = marknthoccur(searchinfo.marked + 1);
+	if (ans == 0) marknthoccur(1);
+}
+
+
+static void
+consolefindmode(int c){
+	int pos = getcursor();
+
+	if(c == '\n') return;
+	else if(c == BACKSPACE){
+		if(pos > 24 * 80 + 8){
+			searchinfo.len--;
+			pos--;
+		}
+	}
+	else{
+		if(searchinfo.len < SEARCH_MAX-1){
+			searchinfo.buf[searchinfo.len++] = c;
+			crt[pos++] = (c & 0xff) | 0x0700;
+		}
+	}
+	markalloccur();
+	marknthoccur(1);
+	setcursor(pos);
+	crt[pos] = ' ' | 0x0700;
+}
+
+
+
+static void
+enterfindmode(){
+	int mx = 25 * 80;
+	for (int i=0;i<mx;i++){
+		int rightPart = crt[i] & 0x00ff;
+		crt[i] = rightPart | 0x7000;
+	}
+
+	int pos = 24 * 80;
+	for (int i=pos;i<mx;i++){
+		crt[i] = ' ' | 0x0200;
+	}
+
+	static char input[] = "Search: ";
+	for (int i=0;i<8;i++){
+		crt[pos++] = input[i] | 0x0200;
+	}
+	for(int i=0;i<searchinfo.len;i++){
+		crt[pos++] = searchinfo.buf[i] | 0x0700;
+	}
+	markalloccur();
+	marknthoccur(1);
+	setcursor(pos);
+	crt[pos] = ' ' | 0x0700;
+}
+
+
+static void
+leavefindmode(){
+	int mx = 25 * 80;
+	for (int i=0;i<mx;i++){
+		int rightPart = crt[i] & 0x00ff;
+		crt[i] = rightPart | 0x0700;
+	}
+	int pos = 24 * 80;
+	for (int i=pos;i<mx;i++){
+		crt[i] = ' ' | 0x0700;
+	}
+}
+
+static int
+togglefindmode(){
+	static int flag = 0;
+	static int inputmodepos = 0;
+	if (!flag){
+		inputmodepos = getcursor();
+		enterfindmode();
+		flag = 1;
+	}
+	else{
+		setcursor(inputmodepos);
+		leavefindmode();
+		flag = 0;
+	}
+	return flag;
+}
 
 void
 consoleintr(int (*getc)(void))
 {
+	static int toggle_find_mode = 0;
 	int c, doprocdump = 0;
 
 	acquire(&cons.lock);
@@ -151,20 +347,37 @@ consoleintr(int (*getc)(void))
 			}
 			break;
 		case C('H'): case '\x7f':  // Backspace
-			if(input.e != input.w){
-				input.e--;
-				consputc(BACKSPACE);
+			if(toggle_find_mode) consolefindmode(BACKSPACE);
+			else{
+				if(input.e != input.w){
+					input.e--;
+					consputc(BACKSPACE);
+				}
 			}
+			break;
+		case A('F'):
+			toggle_find_mode = togglefindmode();
+			break;
+		case A('N'):
+			if (!toggle_find_mode) break;
+			mark_next();
+			break;
+		case A('P'):
+			if (!toggle_find_mode) break;
+			mark_prev();
 			break;
 		default:
 			if(c != 0 && input.e-input.r < INPUT_BUF){
 				c = (c == '\r') ? '\n' : c;
 				input.buf[input.e++ % INPUT_BUF] = c;
-				consputc(c);
-				if(c == '\n' || c == C('D') || input.e == input.r+INPUT_BUF){
-					input.w = input.e;
-					wakeup(&input.r);
+				if (!toggle_find_mode){
+					consputc(c);
+					if(c == '\n' || c == C('D') || input.e == input.r+INPUT_BUF){
+						input.w = input.e;
+						wakeup(&input.r);
+					}
 				}
+				else consolefindmode(c);
 			}
 			break;
 		}
