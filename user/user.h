@@ -5,6 +5,7 @@
 
 struct stat;
 struct rtcdate;
+struct fileblks;
 
 // system calls
 int fork(void);
@@ -28,6 +29,14 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+int get_free_blocks(void);
+int get_file_blocks(int fd, struct fileblks*);
+int get_cursor(void);
+int set_cursor(int pos);
+int read_path(char *path, char *buf);
+int write_path(char *path, char *buf, int n);
+int enter_text_editor();
+int print_screen(char *screen);
 
 // ulib.c
 int stat(const char*, struct stat*);

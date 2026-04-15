@@ -29,3 +29,11 @@ SYSCALL(getpid)
 SYSCALL(sbrk)
 SYSCALL(sleep)
 SYSCALL(uptime)
+SYSCALL(get_free_blocks)
+SYSCALL(get_file_blocks)
+SYSCALL(get_cursor)
+SYSCALL(set_cursor)
+SYSCALL(read_path);
+SYSCALL(write_path);
+SYSCALL(enter_text_editor);
+SYSCALL(print_screen);

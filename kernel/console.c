@@ -71,6 +71,84 @@ panic(char *s)
 #define CRTPORT 0x3d4
 static ushort *crt = (ushort*)P2V(0xb8000);  // CGA memory
 
+static int edit_mode = 0; //toggle edit mode
+static int edit_mode_pos = 0;
+
+void
+draw_screen(char *screen){
+	for (int i=0;i<25*80;i++) crt[i] = (screen[i] & 0xff) | 0x0700;
+}
+static void
+clear_editor_screen(void)
+{
+	for(int i = 0; i < 25 * 80; i++)
+		crt[i] = ' ' | 0x0700;
+}
+
+void
+toggle_edit_mode(){
+	edit_mode = !edit_mode;
+	if (edit_mode){
+		clear_editor_screen();
+		int pos;
+
+		outb(CRTPORT, 14);
+		pos = inb(CRTPORT+1) << 8;
+		outb(CRTPORT, 15);
+		pos |= inb(CRTPORT+1);
+		edit_mode_pos = pos;
+	}
+}
+
+int
+get_edit_mode(){
+	return edit_mode;
+}
+
+
+static void
+edit_mode_putc(int c)
+{
+	int pos;
+
+	outb(CRTPORT, 14);
+	pos = inb(CRTPORT+1) << 8;
+	outb(CRTPORT, 15);
+	pos |= inb(CRTPORT+1);
+	if (c == '$'){
+		if (pos / 80 != 24) pos = 24 * 80 + 8;
+		else pos = edit_mode_pos;
+		for (int i=24*80+8;i<25*80;i++) crt[i] = (' ' & 0xff) | 0x0700;
+		outb(CRTPORT, 14);
+		outb(CRTPORT+1, pos >> 8);
+		outb(CRTPORT, 15);
+		outb(CRTPORT+1, pos);
+		return;
+	}
+
+
+	if(c == '\n' || c == '\r'){
+		if (pos / 80 >= 22) return;
+		pos += 80 - pos % 80;
+	}
+	else if(c == BACKSPACE){
+		if (pos == 24 * 80 + 8) return;
+		if(pos > 80) {   // da ne briše header
+			--pos;
+			crt[pos] = ' ' | 0x0700;
+		}
+	} else {
+		crt[pos++] = (c & 0xff) | 0x0700;
+	}
+
+	outb(CRTPORT, 14);
+	outb(CRTPORT+1, pos >> 8);
+	outb(CRTPORT, 15);
+	outb(CRTPORT+1, pos);
+	crt[pos] = ' ' | 0x0700;
+	if (pos / 80 < 24) edit_mode_pos = pos;
+}
+
 static void
 cgaputc(int c)
 {
@@ -139,34 +217,52 @@ consoleintr(int (*getc)(void))
 	acquire(&cons.lock);
 	while((c = getc()) >= 0){
 		switch(c){
-		case C('P'):  // Process listing.
-			// procdump() locks cons.lock indirectly; invoke later
-			doprocdump = 1;
-			break;
-		case C('U'):  // Kill line.
-			while(input.e != input.w &&
-			      input.buf[(input.e-1) % INPUT_BUF] != '\n'){
-				input.e--;
-				consputc(BACKSPACE);
-			}
-			break;
-		case C('H'): case '\x7f':  // Backspace
-			if(input.e != input.w){
-				input.e--;
-				consputc(BACKSPACE);
-			}
-			break;
-		default:
-			if(c != 0 && input.e-input.r < INPUT_BUF){
-				c = (c == '\r') ? '\n' : c;
-				input.buf[input.e++ % INPUT_BUF] = c;
-				consputc(c);
-				if(c == '\n' || c == C('D') || input.e == input.r+INPUT_BUF){
-					input.w = input.e;
-					wakeup(&input.r);
+			case C('P'):  // Process listing.
+				// procdump() locks cons.lock indirectly; invoke later
+				doprocdump = 1;
+				break;
+			case C('U'):  // Kill line.
+				while(input.e != input.w &&
+					input.buf[(input.e-1) % INPUT_BUF] != '\n'){
+						input.e--;
+						if (!edit_mode) consputc(BACKSPACE);
+					}
+					break;
+			case C('H'): case '\x7f':
+				if(!edit_mode){
+					if(input.e != input.w){
+						input.e--;
+						consputc(BACKSPACE);
+					}
+				} else {
+					if(input.e - input.r < INPUT_BUF){
+						input.buf[input.e++ % INPUT_BUF] = 127;
+						input.w = input.e;
+						wakeup(&input.r);
+					}
 				}
-			}
-			break;
+				break;
+			default:
+				if (edit_mode){
+					if(c != 0 && input.e-input.r < INPUT_BUF){
+						c = (c == '\r') ? '\n' : c;
+						input.buf[input.e++ % INPUT_BUF] = c;
+						input.w = input.e;
+						wakeup(&input.r);
+					}
+				}
+				else{
+					if(c != 0 && input.e-input.r < INPUT_BUF){
+						c = (c == '\r') ? '\n' : c;
+						input.buf[input.e++ % INPUT_BUF] = c;
+						consputc(c);
+						if(c == '\n' || c == C('D') || input.e == input.r+INPUT_BUF){
+							input.w = input.e;
+							wakeup(&input.r);
+						}
+					}
+				}
+				break;
 		}
 	}
 	release(&cons.lock);

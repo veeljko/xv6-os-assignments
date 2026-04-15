@@ -12,6 +12,202 @@
 #include "fs.h"
 #include "file.h"
 #include "fcntl.h"
+#include "buf.h"
+#include "fileblks.h"
+#include "x86.h"
+
+#define CRTPORT 0x3d4
+
+void draw_screen(char *screen);
+int get_edit_mode();
+void toggle_edit_mode();
+
+int sys_print_screen(void){
+	char *screen;
+	if(argptr(0, (char**)&screen, 25 * 80) < 0)
+		return -1;
+
+	if (get_edit_mode() == 1){
+		draw_screen(screen);
+	}
+	return 0;
+}
+
+int sys_enter_text_editor(void){
+	toggle_edit_mode();
+	return 0;
+}
+
+static struct inode* create(char *path, short type, short major, short minor);
+void itrunc_public(struct inode *ip);
+extern struct superblock sb;
+
+
+/* Broji sve trenutno slobodne blokove u filesystem-u */
+static int
+count_free_blocks_internal(void){
+	if(sb.size <= 0) return -1;
+	int cnt = 0;
+
+	for(int b = 0; b < sb.size; b += BPB){
+		struct buf *bp = bread(ROOTDEV, BBLOCK(b, sb));
+
+		for(int bi = 0; bi < BPB && b + bi < sb.size; bi++){
+			int m = 1 << (bi % 8);
+
+			if((bp->data[bi/8] & m) == 0) cnt++;
+		}
+
+		brelse(bp);
+	}
+
+	return cnt;
+}
+
+int sys_get_free_blocks(void){
+	return count_free_blocks_internal();
+}
+
+/* Broji koliko blokova trenutni fajl zaista zauzima na disku.*/
+static int
+count_inode_blocks(struct inode *ip)
+{
+	int cnt = 0;
+
+	for(int i = 0; i < NDIRECT; i++){
+		if(ip->addrs[i] != 0)
+			cnt++;
+	}
+
+	if(ip->addrs[NDIRECT] != 0){
+		cnt++;  // sam indirektni blok
+
+		struct buf *bp = bread(ip->dev, ip->addrs[NDIRECT]);
+		uint *a = (uint*)bp->data;
+
+		for(int i = 0; i < NINDIRECT; i++){
+			if(a[i] != 0)
+				cnt++;
+		}
+
+		brelse(bp);
+	}
+
+	return cnt;
+}
+
+int
+sys_write_path(void)
+{
+	char *path, *buf;
+	struct inode *ip;
+	int n;
+
+	if(argstr(0, &path) < 0) return -4;
+	if(argint(2, &n) < 0 || n < 0) return -4;
+	if(argptr(1, (char**)&buf, n) < 0) return -4;
+
+	/* koliko blokova treba za novi sadržaj */
+	int needed = (n + BSIZE - 1) / BSIZE;
+	if(needed > NDIRECT) needed++;
+
+	begin_op();
+
+	ip = namei(path);
+
+	if (ip == 0){
+		ip = create(path, T_FILE, 0, 0);
+		if(ip == 0){
+			end_op();
+			return -5;
+		}
+	}
+	else ilock(ip);
+
+	if(ip->type == T_DEV){
+		iunlockput(ip);
+		end_op();
+		return -2;
+	}
+
+	/* blokovi koji će se osloboditi nakon itrunc */
+	int reusable = count_inode_blocks(ip);
+	int free = count_free_blocks_internal();
+
+	if(needed > free + reusable){
+		iunlockput(ip);
+		end_op();
+		return -3;
+	}
+
+	itrunc_public(ip);
+
+	if(writei(ip, buf, 0, n) != n){
+		iunlockput(ip);
+		end_op();
+		return -1;
+	}
+
+	iunlockput(ip);
+	end_op();
+	return 0;
+}
+
+int sys_read_path(void){
+	char *path, *buf;
+	struct inode *ip;
+
+	if(argstr(0, &path) < 0) return -1;
+
+	ip = namei(path);
+	if(ip == 0) return 0;
+	ilock(ip);
+
+
+	if(argptr(1, (char**)&buf, ip->size) < 0){
+		iunlockput(ip);
+		return -1;
+	}
+
+	if(ip->type == T_DEV){
+		iunlockput(ip);
+		return -2;
+	}
+
+	if(readi(ip, buf, 0, ip->size) != ip->size){
+		iunlockput(ip);
+		return -1;
+	}
+
+	int n = ip->size;
+	iunlockput(ip);
+	return n;
+}
+
+
+int sys_get_cursor(void){
+	int pos;
+	outb(CRTPORT, 14);
+	pos = inb(CRTPORT+1) << 8;
+	outb(CRTPORT, 15);
+	pos |= inb(CRTPORT+1);
+
+	return pos;
+}
+
+int sys_set_cursor(void){
+	int pos;
+	if (argint(0, &pos) < 0) return -1;
+	if(pos < 0 || pos >= 80*25) return -1;
+
+	outb(CRTPORT, 14);
+	outb(CRTPORT+1, pos>>8);
+	outb(CRTPORT, 15);
+	outb(CRTPORT+1, pos);
+
+	return pos;
+}
+
 
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
@@ -29,6 +225,52 @@ argfd(int n, int *pfd, struct file **pf)
 		*pfd = fd;
 	if(pf)
 		*pf = f;
+	return 0;
+}
+
+int sys_get_file_blocks(void){
+	int fd;
+	struct file *f;
+	struct fileblks *fileInfo;
+
+	if(argfd(0, &fd, &f) < 0) return -1;
+	if(argptr(1, (char**)&fileInfo, sizeof(struct fileblks)) < 0) return -1;
+	if(f->type != FD_INODE) return -1;
+
+	struct inode *ip = f->ip;
+
+	ilock(ip);
+
+	fileInfo->num_blocks = (ip->size + BSIZE - 1) / BSIZE;
+
+	if(ip->size == 0 || ip->size % BSIZE == 0) fileInfo->last_block_free = 0;
+	else fileInfo->last_block_free = BSIZE - (ip->size % BSIZE);
+
+	int j = 0;
+	for (int i=0;i<NDIRECT  && i < fileInfo->num_blocks;i++){
+		if(ip->addrs[i] != 0) fileInfo->blocks[j++] = ip->addrs[i];
+	}
+	int indirect = fileInfo->num_blocks - NDIRECT;
+	if(indirect > 0){
+		if(ip->addrs[NDIRECT] != 0){
+			uint *a;
+			struct buf *bp;
+
+			bp = bread(ip->dev, ip->addrs[NDIRECT]);
+			a = (uint*)bp->data;
+			for (int i=0;i<indirect && i < NINDIRECT;i++){
+				if(j >= 140){
+					iunlock(ip);
+					return -1;
+				}
+				if(a[i] != 0) fileInfo->blocks[j++] = a[i];
+			}
+			brelse(bp);
+		}
+	}
+
+	iunlock(ip);
+
 	return 0;
 }
 

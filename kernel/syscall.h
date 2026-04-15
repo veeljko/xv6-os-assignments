@@ -23,5 +23,13 @@
 #define SYS_link   19
 #define SYS_mkdir  20
 #define SYS_close  21
+#define SYS_get_free_blocks 22
+#define SYS_get_file_blocks 23
+#define SYS_get_cursor 24
+#define SYS_set_cursor 25
+#define SYS_read_path 26
+#define SYS_write_path 27
+#define SYS_enter_text_editor 28
+#define SYS_print_screen 29
 
 #endif // KERNEL_SYSCALL_H
