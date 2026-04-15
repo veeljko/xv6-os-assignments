@@ -120,8 +120,8 @@ static uchar altmap[256] =
 {
 	NO,      NO,      NO,      NO,      NO,      NO,      NO,      NO,
 	NO,      NO,      NO,      NO,      NO,      NO,      NO,      NO,
-	C('Q'),  C('W'),  C('E'),  C('R'),  C('T'),  C('Y'),  C('U'),  C('I'),
-	C('O'),  A('P'),  NO,      NO,      '\r',    NO,      C('A'),  C('S'),
+	C('Q'),  C('W'),  C('E'),  C('R'),  C('T'),  C('Y'),  A('U'),  C('I'),
+	C('O'),  A('P'),  NO,      NO,      '\r',    NO,      C('A'),  A('S'),
 	C('D'),  A('F'),  C('G'),  C('H'),  C('J'),  C('K'),  C('L'),  NO,
 	NO,      NO,      NO,      C('\\'), C('Z'),  C('X'),  C('C'),  C('V'),
 	A('B'),  A('N'),  C('M'),  NO,      NO,      C('/'),  NO,      NO,

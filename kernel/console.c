@@ -18,6 +18,7 @@ static void consputc(int);
 
 static int panicked = 0;
 static int markColor = 0x5000;
+static int hideInput = 0;
 
 
 static struct {
@@ -260,7 +261,8 @@ consolefindmode(int c){
 	else{
 		if(searchinfo.len < SEARCH_MAX-1){
 			searchinfo.buf[searchinfo.len++] = c;
-			crt[pos++] = (c & 0xff) | 0x0700;
+			if (!hideInput) crt[pos++] = (c & 0xff) | 0x0700;
+			else crt[pos++] = (' ' & 0xff) | 0x0700;
 		}
 	}
 	markalloccur();
@@ -289,7 +291,8 @@ enterfindmode(){
 		crt[pos++] = input[i] | 0x0200;
 	}
 	for(int i=0;i<searchinfo.len;i++){
-		crt[pos++] = searchinfo.buf[i] | 0x0700;
+		if (!hideInput) crt[pos++] = searchinfo.buf[i] | 0x0700;
+		else crt[pos++] = ' ' | 0x0700;
 	}
 	markalloccur();
 	marknthoccur(1);
@@ -336,6 +339,44 @@ change_selected_color(){
 	marknthoccur(searchinfo.marked);
 }
 
+static void
+to_upper_case(int l, int r){
+	int diff = 'A' - 'a';
+	for (int i=l;i<=r;i++){
+		int c = crt[i] & 0x00ff;
+		if (c >= 'a' && c <= 'z') c += diff;
+		crt[i] = (c & 0x00ff) | 0x0700;
+	}
+}
+
+static void
+targetToUpperCaseScreen(){
+	int mx = 24 * 80;
+	for(int i = 0; i < mx; i++){
+		int rightPart = crt[i] & 0x00ff;
+		crt[i] = rightPart | 0x7000; // pozadina
+	}
+	if(searchinfo.len == 0) return;
+	int p1 = 0, found = 0;
+	for(int i = 0; i < mx; i++){
+		char ch = crt[i] & 0x00ff;
+		if(cmp_non_case_sens(searchinfo.buf[p1], ch)){
+			p1++;
+			if(p1 == searchinfo.len){
+				to_upper_case(i - searchinfo.len + 1, i);
+				p1 = 0;
+				found++;
+			}
+		}
+		else{
+			p1 = 0;
+		}
+	}
+	markalloccur();
+	marknthoccur(searchinfo.marked);
+	searchinfo.totalfound = found;
+}
+
 void
 consoleintr(int (*getc)(void))
 {
@@ -366,7 +407,7 @@ consoleintr(int (*getc)(void))
 			}
 			break;
 		case A('F'):
-			toggle_find_mode = togglefindmode();
+			if (hideInput == 0) toggle_find_mode = togglefindmode();
 			break;
 		case A('N'):
 			if (!toggle_find_mode) break;
@@ -379,6 +420,19 @@ consoleintr(int (*getc)(void))
 		case A('B'):
 			// e9printf("test\n");
 			change_selected_color();
+			break;
+		case A('U'):
+			targetToUpperCaseScreen();
+			break;
+		case A('S'):
+			if (hideInput == 0 && !toggle_find_mode){
+				hideInput = 1;
+				toggle_find_mode = togglefindmode();
+			}
+			else if (hideInput == 1 && toggle_find_mode){
+				hideInput = 0;
+				toggle_find_mode = togglefindmode();
+			}
 			break;
 		default:
 			if(c != 0 && input.e-input.r < INPUT_BUF){
