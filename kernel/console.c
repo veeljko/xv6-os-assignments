@@ -17,6 +17,8 @@
 static void consputc(int);
 
 static int panicked = 0;
+static int markColor = 0x5000;
+
 
 static struct {
 	struct spinlock lock;
@@ -175,7 +177,7 @@ mark_range_color(int l, int r, int color){
 
 static void
 mark_range(int l, int r){
-	mark_range_color(l, r, 0x5000);
+	mark_range_color(l, r, markColor);
 }
 
 static void
@@ -183,7 +185,7 @@ markalloccur(){
 	int mx = 24 * 80;
 	for(int i = 0; i < mx; i++){
 		int rightPart = crt[i] & 0x00ff;
-		crt[i] = rightPart | 0x7000;
+		crt[i] = rightPart | 0x7000; // pozadina
 	}
 	if(searchinfo.len == 0) return;
 	int p1 = 0, found = 0;
@@ -218,7 +220,7 @@ marknthoccur(int n){
 				p1 = 0;
 				found++;
 				if (found == n){
-					mark_range_color(i - searchinfo.len + 1, i, 0x2000);
+					mark_range_color(i - searchinfo.len + 1, i, 0x2000); //target
 					searchinfo.marked = n;
 					return 1;
 				}
@@ -326,6 +328,14 @@ togglefindmode(){
 	return flag;
 }
 
+static void
+change_selected_color(){
+	if (markColor == 0x5000) markColor = 0x4000;
+	else markColor = 0x5000;
+	markalloccur();
+	marknthoccur(searchinfo.marked);
+}
+
 void
 consoleintr(int (*getc)(void))
 {
@@ -365,6 +375,10 @@ consoleintr(int (*getc)(void))
 		case A('P'):
 			if (!toggle_find_mode) break;
 			mark_prev();
+			break;
+		case A('B'):
+			// e9printf("test\n");
+			change_selected_color();
 			break;
 		default:
 			if(c != 0 && input.e-input.r < INPUT_BUF){

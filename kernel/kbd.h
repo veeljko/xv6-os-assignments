@@ -124,7 +124,7 @@ static uchar altmap[256] =
 	C('O'),  A('P'),  NO,      NO,      '\r',    NO,      C('A'),  C('S'),
 	C('D'),  A('F'),  C('G'),  C('H'),  C('J'),  C('K'),  C('L'),  NO,
 	NO,      NO,      NO,      C('\\'), C('Z'),  C('X'),  C('C'),  C('V'),
-	C('B'),  A('N'),  C('M'),  NO,      NO,      C('/'),  NO,      NO,
+	A('B'),  A('N'),  C('M'),  NO,      NO,      C('/'),  NO,      NO,
 	[0x9C] '\r',      // KP_Enter
 	[0xB5] C('/'),    // KP_Div
 	[0xC8] KEY_UP,    [0xD0] KEY_DN,
