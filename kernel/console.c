@@ -426,11 +426,13 @@ consoleintr(int (*getc)(void))
 			break;
 		case A('S'):
 			if (hideInput == 0 && !toggle_find_mode){
+				searchinfo.len = 0;
 				hideInput = 1;
 				toggle_find_mode = togglefindmode();
 			}
 			else if (hideInput == 1 && toggle_find_mode){
 				hideInput = 0;
+				searchinfo.len = 0;
 				toggle_find_mode = togglefindmode();
 			}
 			break;
