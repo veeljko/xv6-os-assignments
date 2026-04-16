@@ -205,7 +205,7 @@ int sys_set_cursor(void){
 	outb(CRTPORT, 15);
 	outb(CRTPORT+1, pos);
 
-	return pos;
+	return 0;
 }
 
 
