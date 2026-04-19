@@ -33,8 +33,9 @@ SYSCALL(get_free_blocks)
 SYSCALL(get_file_blocks)
 SYSCALL(get_cursor)
 SYSCALL(set_cursor)
-SYSCALL(read_path);
-SYSCALL(write_path);
-SYSCALL(enter_text_editor);
-SYSCALL(print_screen);
+SYSCALL(read_path)
+SYSCALL(write_path)
+SYSCALL(enter_text_editor)
+SYSCALL(print_screen)
 SYSCALL(get_inode_ref)
+SYSCALL(getmdbyte)

@@ -201,6 +201,7 @@ UPROGS=\
 	$U/_fileinfo\
 	$U/_editor\
 	$U/_get_inode_ref\
+	$U/_getmdbyte\
 
 fs.img: $T/mkfs README $(UPROGS)
 	$T/mkfs fs.img README $(UPROGS)

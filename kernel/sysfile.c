@@ -97,6 +97,7 @@ count_inode_blocks(struct inode *ip)
 }
 
 
+
 int sys_get_inode_ref(){
 	char *path;
 	if(argstr(0, &path) < 0)
@@ -288,6 +289,33 @@ int sys_get_file_blocks(void){
 	iunlock(ip);
 
 	return 0;
+}
+
+int to_int(char *buf, int n){
+	int ans = 0;
+	for (int i=n-1;i>=0;i--){
+		ans *= 10;
+		ans += buf[i] - '0';
+	}
+	return ans;
+}
+
+int sys_getmdbyte(){
+	int fd;
+	struct file *f;
+
+	if(argfd(0, &fd, &f) < 0) return -1;
+	struct inode *ip = f->ip;
+
+	int last_block_free;
+	int num_blocks = (ip->size + BSIZE - 1) / BSIZE;
+	if(ip->size == 0 || ip->size % BSIZE == 0) last_block_free = 0;
+	else last_block_free = BSIZE - (ip->size % BSIZE);
+
+	int ukupnoBajtova = num_blocks * 512 - last_block_free;
+	char *buf;
+	int res = readi(ip, buf, ukupnoBajtova / 2, 1);
+	return (int)buf;
 }
 
 // Allocate a file descriptor for the given file.

@@ -388,9 +388,35 @@ main(int argc, char *argv[])
                                 buff.m = strlen(res);
                             }
                         }
+                        else if (!strcmp(buff.commands, "clear")){
+                            buff.commandMode = 0;
+                            buff.resMsg = 0;
+                            buff.m = 0;
+                            buff.isDirty = 0;
+                            buff.n = 0;
+                            quitCount = 0;
+                            for (int i=0;i<25*80;i++) screen[i] = ' ';
+                            int res = write_path(path, buff.text, buff.n);
+                            if (res == -1){
+                                handle_error("Upisivanje nije bilo uspešno.");
+                            }
+                            if (res == -2){
+                                handle_error("Datoteka je T_DEV tipa.");
+                            }
+                            if (res == -3){
+                                handle_error("Nema dovoljno slobodnih blokova na disku.");
+                            }
+                            if (res == -4){
+                                handle_error("Greska pri prosledjivanju parametara funckije.");
+                            }
+                            if (res == -5){
+                                handle_error("Greska pri pravljenju fajla.");
+                            }
+                        }
                     }
                     else{
                         if (pos < 25 * 80 - 2) buff.commands[buff.m ++] = c;
+
                     }
                 }
             }

@@ -32,5 +32,6 @@
 #define SYS_enter_text_editor 28
 #define SYS_print_screen 29
 #define SYS_get_inode_ref 30
+#define SYS_getmdbyte 31
 
 #endif // KERNEL_SYSCALL_H

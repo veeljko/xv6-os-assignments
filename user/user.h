@@ -38,6 +38,7 @@ int write_path(char *path, char *buf, int n);
 int enter_text_editor();
 int print_screen(char *screen);
 int get_inode_ref(char *path);
+int getmdbyte(int fd);
 
 // ulib.c
 int stat(const char*, struct stat*);
