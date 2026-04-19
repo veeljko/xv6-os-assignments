@@ -108,6 +108,7 @@ extern int sys_read_path(void);
 extern int sys_write_path(void);
 extern int sys_enter_text_editor(void);
 extern int sys_print_screen(void);
+extern int sys_get_inode_ref(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -139,7 +140,7 @@ static int (*syscalls[])(void) = {
 [SYS_write_path] sys_write_path,
 [SYS_enter_text_editor] sys_enter_text_editor,
 [SYS_print_screen] sys_print_screen,
-
+[SYS_get_inode_ref] sys_get_inode_ref
 };
 
 void

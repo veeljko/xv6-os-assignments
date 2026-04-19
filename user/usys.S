@@ -37,3 +37,4 @@ SYSCALL(read_path);
 SYSCALL(write_path);
 SYSCALL(enter_text_editor);
 SYSCALL(print_screen);
+SYSCALL(get_inode_ref)

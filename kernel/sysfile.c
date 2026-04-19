@@ -96,6 +96,22 @@ count_inode_blocks(struct inode *ip)
 	return cnt;
 }
 
+
+int sys_get_inode_ref(){
+	char *path;
+	if(argstr(0, &path) < 0)
+		return -1;
+	begin_op();
+	struct inode *ip = namei(path);
+	if (ip == 0){
+		end_op();
+		return -1;
+	}
+	int ref_count = ip->ref;
+	end_op();
+	return ref_count;
+}
+
 int
 sys_write_path(void)
 {

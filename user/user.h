@@ -37,6 +37,7 @@ int read_path(char *path, char *buf);
 int write_path(char *path, char *buf, int n);
 int enter_text_editor();
 int print_screen(char *screen);
+int get_inode_ref(char *path);
 
 // ulib.c
 int stat(const char*, struct stat*);
