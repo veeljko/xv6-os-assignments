@@ -2,6 +2,7 @@
 #define USER_USER_H
 
 #include <kernel/types.h>
+#include <kernel/stat.h>
 
 struct stat;
 struct rtcdate;
@@ -28,6 +29,13 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+int snap_take(int);
+int snap_restore(int);
+int snap_diff(int, int);
+int snap_release(int);
+int snap_status(int, struct snap_info*);
+int snap_empty(void);
+
 
 // ulib.c
 int stat(const char*, struct stat*);

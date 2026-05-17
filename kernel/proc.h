@@ -5,6 +5,8 @@
 #include "mmu.h"
 #include "param.h"
 
+#define NSNAP 4
+
 // Per-CPU state
 struct cpu {
 	uchar apicid;                // Local APIC ID
@@ -55,6 +57,8 @@ struct proc {
 	struct file *ofile[NOFILE];  // Open files
 	struct inode *cwd;           // Current directory
 	char name[16];               // Process name (debugging)
+	pde_t *copy_of_pgdir[NSNAP];
+	uint copy_of_sz[NSNAP];
 };
 
 // Process memory is laid out contiguously, low addresses first:

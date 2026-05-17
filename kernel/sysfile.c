@@ -12,6 +12,197 @@
 #include "fs.h"
 #include "file.h"
 #include "fcntl.h"
+#include "x86.h"
+#include "memlayout.h"
+#include "mmu.h"
+
+int
+sys_snap_take(){
+	int slot;
+
+	if(argint(0, &slot) < 0) return -4;
+
+	if(slot < 0 || slot >= NSNAP) return -2;
+
+	struct proc *curproc = myproc();
+
+	if(curproc->copy_of_pgdir[slot] != 0) return -3;
+
+
+	pde_t *pgdir = curproc->pgdir;
+	uint sz = curproc->sz;
+
+
+	pde_t *d;
+	pte_t *pte;
+	uint pa, i, flags;
+	char *mem;
+	int err = -4;
+
+	if((d = setupkvm()) == 0) return -1;
+
+
+	for(i = 0; i < sz; i += PGSIZE){
+		if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
+			goto bad;
+		if(!(*pte & PTE_P))
+			goto bad;
+
+
+		pa = PTE_ADDR(*pte);
+		flags = PTE_FLAGS(*pte);
+		if((mem = kalloc()) == 0){
+			err = -1;
+			goto bad;
+		}
+
+
+		memmove(mem, (char*)P2V(pa), PGSIZE);
+		if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
+			kfree(mem);
+			err = -1;
+			goto bad;
+		}
+	}
+	curproc->copy_of_pgdir[slot] = d;
+	curproc->copy_of_sz[slot] = sz;
+	return 0;
+
+	bad:
+		freevm(d);
+		return err;
+}
+
+int
+sys_snap_restore(void)
+{
+	int slot;
+
+	if(argint(0, &slot) < 0) return -3;
+	if(slot < 0 || slot >= NSNAP) return -2;
+	struct proc *curproc = myproc();
+	if(curproc->copy_of_pgdir[slot] == 0) return -1;
+
+	pde_t *newpgdir;
+	pde_t *oldpgdir;
+
+	newpgdir = copyuvm(curproc->copy_of_pgdir[slot], curproc->copy_of_sz[slot]);
+	if(newpgdir == 0) return -3;
+
+	oldpgdir = curproc->pgdir;
+
+	curproc->pgdir = newpgdir;
+	curproc->sz = curproc->copy_of_sz[slot];
+
+	switchuvm(curproc);
+
+	freevm(oldpgdir);
+
+	return 0;
+}
+
+int min(int a, int b){
+	return a > b ? b : a;
+}
+
+int max(int a, int b){
+	return a > b ? a : b;
+}
+
+int
+sys_snap_diff(void)
+{
+	int slot1, slot2;
+
+	if(argint(0, &slot1) < 0) return -3;
+	if(argint(1, &slot2) < 0) return -3;
+
+	if(slot1 < 0 || slot1 >= NSNAP) return -2;
+	if(slot2 < 0 || slot2 >= NSNAP) return -2;
+	struct proc *curproc = myproc();
+
+	if(curproc->copy_of_pgdir[slot1] == 0) return -1;
+	if(curproc->copy_of_pgdir[slot2] == 0) return -1;
+
+
+	int diff = 0;
+	for(uint i = 0; i < max(curproc->copy_of_sz[slot1], curproc->copy_of_sz[slot2]); i += PGSIZE){
+		if (i < min(curproc->copy_of_sz[slot1], curproc->copy_of_sz[slot2])){
+			pte_t *entry1 = walkpgdir(curproc->copy_of_pgdir[slot1], (void*)i, 0);
+			pte_t *entry2 = walkpgdir(curproc->copy_of_pgdir[slot2], (void*)i, 0);
+
+			if(entry1 == 0 && entry2 == 0) continue;
+			if(entry1 == 0 || entry2 == 0) {
+				diff++;
+				continue;
+			}
+			if(!(*entry1 & PTE_P) && !(*entry2 & PTE_P)){
+				continue;
+			}
+			if(!(*entry1 & PTE_P) || !(*entry2 & PTE_P)){
+				diff++;
+				continue;
+			}
+
+			uint pa1 = PTE_ADDR(*entry1);
+			uint pa2 = PTE_ADDR(*entry2);
+			char *page1 = (char*)P2V(pa1);
+			char *page2 = (char*)P2V(pa2);
+
+			for (int j=0;j<PGSIZE;j++){
+				if (page1[j] != page2[j]){
+					diff++;
+					break;
+				}
+			}
+		}
+		else diff++;
+	}
+
+	return diff;
+}
+
+int
+sys_snap_release(void){
+	int slot;
+
+	if(argint(0, &slot) < 0) return -3;
+	if(slot < 0 || slot >= NSNAP) return -2;
+	struct proc *curproc = myproc();
+	if (curproc->copy_of_pgdir[slot] == 0) return -1;
+
+	freevm(curproc->copy_of_pgdir[slot]);
+	curproc->copy_of_pgdir[slot] = 0;
+	curproc->copy_of_sz[slot] = 0;
+	return 0;
+}
+
+int
+sys_snap_status(){
+	int slot;
+	struct snap_info *info;
+
+	if(argint(0, &slot) < 0) return -2;
+	if(argptr(1, (char**)&info, sizeof(struct snap_info)) < 0) return -2;
+	if(slot < 0 || slot >= NSNAP) return -2;
+	struct proc *curproc = myproc();
+	if (curproc->copy_of_pgdir[slot] == 0) return -1;
+
+	info->size = curproc->copy_of_sz[slot];
+	info->num_pages = (curproc->copy_of_sz[slot] + PGSIZE - 1) / PGSIZE; //ceil div
+	return 0;
+}
+
+int
+sys_snap_empty(void){
+	struct proc *curproc = myproc();
+	for (int i=0;i<NSNAP;i++){
+		if (curproc->copy_of_pgdir[i] == 0) return i;
+	}
+	return -1;
+}
+
+
 
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.

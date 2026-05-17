@@ -6,6 +6,7 @@
 #include "proc.h"
 #include "spinlock.h"
 
+
 struct {
 	struct spinlock lock;
 	struct proc proc[NPROC];
@@ -112,6 +113,11 @@ found:
 	memset(p->context, 0, sizeof *p->context);
 	p->context->eip = (uint)forkret;
 
+	for(int i = 0; i < NSNAP; i++){
+		p->copy_of_pgdir[i] = 0;
+		p->copy_of_sz[i] = 0;
+	}
+
 	return p;
 }
 
@@ -173,6 +179,17 @@ growproc(int n)
 	return 0;
 }
 
+static void
+freesnaps(struct proc *p){
+	for(int i = 0; i < NSNAP; i++){
+		if(p->copy_of_pgdir[i] != 0){
+			freevm(p->copy_of_pgdir[i]);
+			p->copy_of_pgdir[i] = 0;
+			p->copy_of_sz[i] = 0;
+		}
+	}
+}
+
 // Create a new process copying p as the parent.
 // Sets up stack to return as if from system call.
 // Caller must set state of returned proc to RUNNABLE.
@@ -194,6 +211,24 @@ fork(void)
 		np->kstack = 0;
 		np->state = UNUSED;
 		return -1;
+	}
+
+	for(i = 0; i < NSNAP; i++){
+		if(curproc->copy_of_pgdir[i] == 0) continue;
+
+		np->copy_of_pgdir[i] = copyuvm(curproc->copy_of_pgdir[i], curproc->copy_of_sz[i]);
+
+		if(np->copy_of_pgdir[i] == 0){
+			freesnaps(np);
+			freevm(np->pgdir);
+			kfree(np->kstack);
+			np->kstack = 0;
+			np->pgdir = 0;
+			np->state = UNUSED;
+			return -1;
+		}
+
+		np->copy_of_sz[i] = curproc->copy_of_sz[i];
 	}
 	np->sz = curproc->sz;
 	np->parent = curproc;
@@ -259,7 +294,7 @@ exit(void)
 				wakeup1(initproc);
 		}
 	}
-
+	freesnaps(curproc);
 	// Jump into the scheduler, never to return.
 	curproc->state = ZOMBIE;
 	sched();
@@ -293,6 +328,7 @@ wait(void)
 				p->parent = 0;
 				p->name[0] = 0;
 				p->killed = 0;
+				freesnaps(p);
 				p->state = UNUSED;
 				release(&ptable.lock);
 				return pid;
