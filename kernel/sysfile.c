@@ -73,6 +73,8 @@ sys_snap_take(){
 		return err;
 }
 
+
+
 int
 sys_snap_restore(void)
 {
