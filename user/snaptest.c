@@ -518,13 +518,13 @@ main(void)
 
     test_take_status_diff_release();
 
-    // test_all_slots_full();
+    test_all_slots_full();
 
-    // test_diff_different_sizes();
+    test_diff_different_sizes();
 
-    // test_restore_detailed();
+    test_restore_detailed();
 
-    // test_fork_inheritance_detailed();
+    test_fork_inheritance_detailed();
 
     printf("\n=== SNAP DEEP TEST END ===\n");
 
