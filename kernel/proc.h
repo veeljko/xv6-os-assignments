@@ -59,6 +59,7 @@ struct proc {
 	char name[16];               // Process name (debugging)
 	pde_t *copy_of_pgdir[NSNAP];
 	uint copy_of_sz[NSNAP];
+	struct trapframe *copy_of_tf[NSNAP];
 };
 
 // Process memory is laid out contiguously, low addresses first:

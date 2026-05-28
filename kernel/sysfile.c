@@ -17,7 +17,8 @@
 #include "mmu.h"
 
 int
-sys_snap_take(){
+sys_snap_take()
+{
 	int slot;
 
 	if(argint(0, &slot) < 0) return -4;
@@ -28,73 +29,112 @@ sys_snap_take(){
 
 	if(curproc->copy_of_pgdir[slot] != 0) return -3;
 
-
 	pde_t *pgdir = curproc->pgdir;
 	uint sz = curproc->sz;
-
 
 	pde_t *d;
 	pte_t *pte;
 	uint pa, i, flags;
 	char *mem;
+	struct trapframe *tfcopy = 0;
 	int err = -4;
 
-	if((d = setupkvm()) == 0) return -1;
+	if((d = setupkvm()) == 0)
+		return -1;
 
+	if((tfcopy = (struct trapframe*)kalloc()) == 0){
+		freevm(d);
+		return -1;
+	}
+
+	/*
+	 * Cuvamo CPU stanje iz trenutka snapshot-a.
+	 * Kasnije ce snap_restore vratiti eip/esp/registre na ovo stanje.
+	 */
+	*tfcopy = *curproc->tf;
+
+	/*
+	 * Kada se restore vrati na mesto posle snap_take,
+	 * hocemo da izgleda kao da je snap_take vratio 0.
+	 */
+	tfcopy->eax = 0;
 
 	for(i = 0; i < sz; i += PGSIZE){
 		if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
 			goto bad;
+
 		if(!(*pte & PTE_P))
 			goto bad;
 
-
 		pa = PTE_ADDR(*pte);
 		flags = PTE_FLAGS(*pte);
+
 		if((mem = kalloc()) == 0){
 			err = -1;
 			goto bad;
 		}
 
-
 		memmove(mem, (char*)P2V(pa), PGSIZE);
+
 		if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
 			kfree(mem);
 			err = -1;
 			goto bad;
 		}
 	}
+
 	curproc->copy_of_pgdir[slot] = d;
 	curproc->copy_of_sz[slot] = sz;
+	curproc->copy_of_tf[slot] = tfcopy;
+
 	return 0;
 
 	bad:
-		freevm(d);
-		return err;
+	if(tfcopy != 0)
+		kfree((char*)tfcopy);
+
+	freevm(d);
+	return err;
 }
-
-
-
 int
 sys_snap_restore(void)
 {
 	int slot;
 
 	if(argint(0, &slot) < 0) return -3;
+
 	if(slot < 0 || slot >= NSNAP) return -2;
+
 	struct proc *curproc = myproc();
+
 	if(curproc->copy_of_pgdir[slot] == 0) return -1;
+	if(curproc->copy_of_tf[slot] == 0) return -1;
 
 	pde_t *newpgdir;
 	pde_t *oldpgdir;
 
-	newpgdir = copyuvm(curproc->copy_of_pgdir[slot], curproc->copy_of_sz[slot]);
-	if(newpgdir == 0) return -3;
+	newpgdir = copyuvm(curproc->copy_of_pgdir[slot],
+					   curproc->copy_of_sz[slot]);
+
+	if(newpgdir == 0)
+		return -3;
 
 	oldpgdir = curproc->pgdir;
 
 	curproc->pgdir = newpgdir;
 	curproc->sz = curproc->copy_of_sz[slot];
+
+	/*
+	 * Ovo je kljucno:
+	 * vracamo user registre, eip i esp iz trenutka snap_take.
+	 */
+	*curproc->tf = *curproc->copy_of_tf[slot];
+
+	/*
+	 * Kada se user program vrati iz syscall-a,
+	 * snap_take treba da izgleda kao da je vratio 0.
+	 */
+	curproc->tf->eax = 0;
 
 	switchuvm(curproc);
 
@@ -165,17 +205,27 @@ sys_snap_diff(void)
 }
 
 int
-sys_snap_release(void){
+sys_snap_release(void)
+{
 	int slot;
 
 	if(argint(0, &slot) < 0) return -3;
+
 	if(slot < 0 || slot >= NSNAP) return -2;
+
 	struct proc *curproc = myproc();
-	if (curproc->copy_of_pgdir[slot] == 0) return -1;
+
+	if(curproc->copy_of_pgdir[slot] == 0) return -1;
 
 	freevm(curproc->copy_of_pgdir[slot]);
 	curproc->copy_of_pgdir[slot] = 0;
 	curproc->copy_of_sz[slot] = 0;
+
+	if(curproc->copy_of_tf[slot] != 0){
+		kfree((char*)curproc->copy_of_tf[slot]);
+		curproc->copy_of_tf[slot] = 0;
+	}
+
 	return 0;
 }
 

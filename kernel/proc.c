@@ -116,6 +116,7 @@ found:
 	for(int i = 0; i < NSNAP; i++){
 		p->copy_of_pgdir[i] = 0;
 		p->copy_of_sz[i] = 0;
+		p->copy_of_tf[i] = 0;
 	}
 
 	return p;
@@ -180,13 +181,20 @@ growproc(int n)
 }
 
 static void
-freesnaps(struct proc *p){
+freesnaps(struct proc *p)
+{
 	for(int i = 0; i < NSNAP; i++){
 		if(p->copy_of_pgdir[i] != 0){
 			freevm(p->copy_of_pgdir[i]);
 			p->copy_of_pgdir[i] = 0;
-			p->copy_of_sz[i] = 0;
 		}
+
+		if(p->copy_of_tf[i] != 0){
+			kfree((char*)p->copy_of_tf[i]);
+			p->copy_of_tf[i] = 0;
+		}
+
+		p->copy_of_sz[i] = 0;
 	}
 }
 
@@ -214,9 +222,12 @@ fork(void)
 	}
 
 	for(i = 0; i < NSNAP; i++){
-		if(curproc->copy_of_pgdir[i] == 0) continue;
+		if(curproc->copy_of_pgdir[i] == 0)
+			continue;
 
-		np->copy_of_pgdir[i] = copyuvm(curproc->copy_of_pgdir[i], curproc->copy_of_sz[i]);
+		np->copy_of_pgdir[i] =
+		copyuvm(curproc->copy_of_pgdir[i],
+				curproc->copy_of_sz[i]);
 
 		if(np->copy_of_pgdir[i] == 0){
 			freesnaps(np);
@@ -228,6 +239,19 @@ fork(void)
 			return -1;
 		}
 
+		np->copy_of_tf[i] = (struct trapframe*)kalloc();
+
+		if(np->copy_of_tf[i] == 0){
+			freesnaps(np);
+			freevm(np->pgdir);
+			kfree(np->kstack);
+			np->kstack = 0;
+			np->pgdir = 0;
+			np->state = UNUSED;
+			return -1;
+		}
+
+		*np->copy_of_tf[i] = *curproc->copy_of_tf[i];
 		np->copy_of_sz[i] = curproc->copy_of_sz[i];
 	}
 	np->sz = curproc->sz;
