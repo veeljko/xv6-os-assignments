@@ -79,7 +79,7 @@ sys_snap_swap(){
 
 	// if(entry1 == 0 || entry2 == 0) return -1;
 	if(!(*entry1 & PTE_P) || !(*entry2 & PTE_P)) return -1;
-	e9printf("fdsfdsfdasfdasdfs\n %d \n", va);
+	// e9printf("fdsfdsfdasfdasdfs\n %d \n", va);
 	uint pa1 = PTE_ADDR(*entry1);
 	uint pa2 = PTE_ADDR(*entry2);
 	uint flags1 = PTE_FLAGS(*entry1);
