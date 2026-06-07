@@ -30,5 +30,6 @@
 #define SYS_snap_status 26
 #define SYS_snap_empty 27
 #define SYS_snap_num 28
+#define SYS_snap_swap 29
 
 #endif // KERNEL_SYSCALL_H

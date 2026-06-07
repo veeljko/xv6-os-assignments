@@ -17,6 +17,98 @@
 #include "mmu.h"
 
 int
+mappages2(pde_t *pgdir, void *va, uint size, uint pa, int perm)
+{
+	char *a, *last;
+	pte_t *pte;
+
+	a = (char*)PGROUNDDOWN((uint)va);
+	last = (char*)PGROUNDDOWN(((uint)va) + size - 1);
+	for(;;){
+		if((pte = walkpgdir(pgdir, a, 1)) == 0) return -1;
+		*pte = pa | perm | PTE_P;
+		if(a == last)
+			break;
+		a += PGSIZE;
+		pa += PGSIZE;
+	}
+	return 0;
+}
+
+int
+dell(pde_t *pgdir, void *va, uint size, uint pa, int perm)
+{
+	char *a, *last;
+	pte_t *pte;
+
+	a = (char*)PGROUNDDOWN((uint)va);
+	last = (char*)PGROUNDDOWN(((uint)va) + size - 1);
+	for(;;){
+		if((pte = walkpgdir(pgdir, a, 1)) == 0) return -1;
+		*pte = pa | perm;
+		if(a == last)
+			break;
+		a += PGSIZE;
+		pa += PGSIZE;
+	}
+	return 0;
+}
+
+int
+sys_snap_swap(){
+	int slot1, slot2, va;
+	if(argint(0, &slot1) < 0) return -1;
+	if(argint(1, &slot2) < 0) return -1;
+	if(argint(2, &va) < 0) return -1;
+	if (slot1 < 0 || slot1 >= NSNAP) return -1;
+	if (slot2 < 0 || slot2 >= NSNAP) return -1;
+
+	struct proc *curproc = myproc();
+
+	if (curproc->copy_of_pgdir[slot1] == 0) return -1;
+	if (curproc->copy_of_pgdir[slot2] == 0) return -1;
+
+	pde_t *pgdir1 = curproc->copy_of_pgdir[slot1];
+	pde_t *pgdir2 = curproc->copy_of_pgdir[slot2];
+	uint sz1 = curproc->copy_of_sz[slot1];
+	uint sz2 = curproc->copy_of_sz[slot2];
+
+	pte_t *entry1 = walkpgdir(pgdir1, (void*)va, 0);
+	pte_t *entry2 = walkpgdir(pgdir2, (void*)va, 0);
+
+
+	// if(entry1 == 0 || entry2 == 0) return -1;
+	if(!(*entry1 & PTE_P) || !(*entry2 & PTE_P)) return -1;
+	e9printf("fdsfdsfdasfdasdfs\n %d \n", va);
+	uint pa1 = PTE_ADDR(*entry1);
+	uint pa2 = PTE_ADDR(*entry2);
+	uint flags1 = PTE_FLAGS(*entry1);
+	uint flags2 = PTE_FLAGS(*entry2);
+
+	char *page1 = (char*)P2V(pa1);
+	char *page2 = (char*)P2V(pa2);
+
+
+	dell(pgdir1, (void*) va, sizeof(page1), V2P(page1), (flags1 ^ PTE_P));
+	dell(pgdir2, (void*) va, sizeof(page2), V2P(page2), (flags2 ^ PTE_P));
+
+	if(mappages(pgdir1, (void*)va, sizeof(page2), V2P(page2), flags2) < 0) {
+		kfree(page1);
+		kfree(page2);
+		return -1;
+	}
+	if(mappages(pgdir2, (void*)va, sizeof(page1), V2P(page1), flags1) < 0) {
+		kfree(page1);
+		kfree(page2);
+		return -1;
+	}
+	kfree(page1);
+	kfree(page2);
+	switchuvm(curproc);
+	return 0;
+}
+
+int
 sys_snap_num(){
 	int ukupno = 0;
 	struct proc *curproc = myproc();
