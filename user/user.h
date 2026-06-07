@@ -35,6 +35,7 @@ int snap_diff(int, int);
 int snap_release(int);
 int snap_status(int, struct snap_info*);
 int snap_empty(void);
+int snap_num(void);
 
 
 // ulib.c

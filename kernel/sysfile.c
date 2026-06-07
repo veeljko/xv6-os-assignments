@@ -17,6 +17,25 @@
 #include "mmu.h"
 
 int
+sys_snap_num(){
+	int ukupno = 0;
+	struct proc *curproc = myproc();
+	pte_t *pte;
+	uint pa, i, flags;
+	pde_t *pgdir = curproc->pgdir;
+	for (int i=0;i<NSNAP;i++){
+		if (curproc->copy_of_pgdir[i] == 0) continue;
+
+		for (int j=0;j<curproc->copy_of_sz[i];j+=PGSIZE){
+			if((pte = walkpgdir(pgdir, (void *) j, 0)) == 0) continue;
+			if(!(*pte & PTE_P)) continue;
+			ukupno++;
+		}
+	}
+	return ukupno;
+}
+
+int
 sys_snap_take()
 {
 	int slot;

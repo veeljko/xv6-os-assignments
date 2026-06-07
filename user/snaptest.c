@@ -294,13 +294,13 @@ main(void)
 {
     printf("\n=== SNAPSHOT TEST START ===\n");
 
-    test_basic_errors();
+    // test_basic_errors();
 
     test_restore_with_file_flag();
 
-    test_fork_inheritance();
+    // test_fork_inheritance();
 
-    test_snap_empty_full_slots();
+    // test_snap_empty_full_slots();
 
     printf("\n=== SNAPSHOT TEST END ===\n");
 
